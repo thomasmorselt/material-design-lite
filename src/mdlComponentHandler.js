@@ -82,30 +82,37 @@ var componentHandler = (function() {
   /**
    * Upgrades a specific element rather than all in the DOM.
    * @param {HTMLElement} element The element we wish to upgrade.
-   * @param {string} jsClass The name of the class we want to upgrade
+   * @param {string} optJsClass Optional name of the class we want to upgrade
    * the element to.
    */
-  function upgradeElementInternal(element, jsClass) {
-    if (jsClass === undefined) {
-      for (var i = 0; i < registeredComponents_.length; i++) {
-        if (element.classList.contains(registeredComponents_[i].cssClass)) {
-          upgradeElementInternal(element, registeredComponents_[i].className);
-        }
-      }
-      return;
-    }
-
+  function upgradeElementInternal(element, optJsClass) {
     // Only upgrade elements that have not already been upgraded.
     var dataUpgraded = element.getAttribute('data-upgraded');
+    var isUpgraded = function(jsClass) {
+      return dataUpgraded && dataUpgraded.indexOf(jsClass) !== -1;
+    };
 
-    if (dataUpgraded === null || dataUpgraded.indexOf(jsClass) === -1) {
-      // Upgrade element.
-      if (dataUpgraded === null) {
-        dataUpgraded = '';
-      }
-      element.setAttribute('data-upgraded', dataUpgraded + ',' + jsClass);
-      var registeredClass = findRegisteredClass_(jsClass);
+    var registeredClasses = [];
+    // If jsClass is not provided scan the registered components to find the
+    // ones matching the element's CSS classList.
+    if (!optJsClass) {
+      registeredClasses = registeredComponents_.filter(function(component) {
+        return element.classList.contains(component.cssClass) &&
+          !isUpgraded(component.className);
+      });
+    } else if (!isUpgraded(optJsClass)) {
+      registeredClasses.push(findRegisteredClass_(optJsClass));
+    }
+
+    // Upgrade the element for each classes.
+    registeredClasses.forEach(function(registeredClass) {
       if (registeredClass) {
+        // Mark element as upgraded.
+        if (dataUpgraded === null) {
+          dataUpgraded = '';
+        }
+        element.setAttribute('data-upgraded', dataUpgraded + ',' +
+          registeredClass.className);
         // new
         var instance = new registeredClass.classConstructor(element);
         instance[componentConfigProperty_] = registeredClass;
@@ -117,7 +124,7 @@ var componentHandler = (function() {
 
         if (registeredClass.widget) {
           // Assign per element instance for control over API
-          element[jsClass] = instance;
+          element[registeredClass.className] = instance;
         }
       } else {
         throw new Error(
@@ -127,7 +134,7 @@ var componentHandler = (function() {
       var ev = document.createEvent('Events');
       ev.initEvent('mdl-componentupgraded', true, true);
       element.dispatchEvent(ev);
-    }
+    });
   }
 
   /**
